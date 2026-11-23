@@ -56,7 +56,17 @@ class KnowledgeAiIT {
         String term = "isolationalphaprobe";
         UUID owned = upload("alice", "Owned", term + " guidance");
         upload("alex", "Other owner", term);
-        upload("bob", "Other tenant", term);
+        UUID otherTenant = upload("bob", "Other tenant", term);
+
+        // The same username may exist in different tenants once external identity is added.
+        UUID shadow = UUID.randomUUID();
+        jdbc.sql("INSERT INTO document (id, tenant, owner_name, title) VALUES (:id, 'beta', 'alice', 'Shadow')")
+                .param("id", shadow).update();
+        jdbc.sql("""
+                INSERT INTO document_chunk (document_id, ordinal, content, embedding)
+                SELECT :shadow, ordinal, content, embedding FROM document_chunk WHERE document_id = :source
+                """)
+                .param("shadow", shadow).param("source", otherTenant).update();
 
         var results = searchAs("alice", term, 1);
         assertThat(results.size()).isEqualTo(1);
