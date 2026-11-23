@@ -9,3 +9,11 @@ spring:
     url: ${KNOWLEDGEAI_DB_URL:jdbc:postgresql://127.0.0.1:5440/knowledgeai}
     username: ${KNOWLEDGEAI_DB_USER:knowledgeai}
     password: ${KNOWLEDGEAI_DB_PASSWORD}
+    hikari:
+      connection-timeout: 2000
+      connection-init-sql: SET statement_timeout TO '2s'
+
+knowledgeai:
+  limits:
+    uploads-per-minute: ${KNOWLEDGEAI_UPLOADS_PER_MINUTE:10}
+    retrievals-per-minute: ${KNOWLEDGEAI_RETRIEVALS_PER_MINUTE:60}

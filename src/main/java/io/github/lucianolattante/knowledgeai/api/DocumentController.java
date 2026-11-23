@@ -38,10 +38,12 @@ class DocumentController {
     private static final int MAX_DOCUMENT_BYTES = 16_384;
     private final DocumentService documents;
     private final AnswerService answers;
+    private final RequestBudget budget;
 
-    DocumentController(DocumentService documents, AnswerService answers) {
+    DocumentController(DocumentService documents, AnswerService answers, RequestBudget budget) {
         this.documents = documents;
         this.answers = answers;
+        this.budget = budget;
     }
 
     @PostMapping(path = "/documents", consumes = MediaType.TEXT_PLAIN_VALUE)
@@ -49,6 +51,7 @@ class DocumentController {
     IndexedDocument upload(Authentication caller, @RequestHeader("X-Document-Title") String title,
                            HttpServletRequest request) throws IOException {
         Identity owner = identity(caller);
+        budget.upload(owner);
         byte[] body = request.getInputStream().readNBytes(MAX_DOCUMENT_BYTES + 1);
         if (body.length > MAX_DOCUMENT_BYTES) {
             throw new DocumentException(PAYLOAD_TOO_LARGE);
@@ -63,12 +66,16 @@ class DocumentController {
 
     @GetMapping("/search")
     List<Source> search(Authentication caller, @RequestParam String q, @RequestParam(defaultValue = "5") int limit) {
-        return documents.search(identity(caller), q, limit);
+        Identity owner = identity(caller);
+        budget.retrieve(owner);
+        return documents.search(owner, q, limit);
     }
 
     @GetMapping("/answers")
     Answer answer(Authentication caller, @RequestParam String q) {
-        return answers.answer(identity(caller), q);
+        Identity owner = identity(caller);
+        budget.retrieve(owner);
+        return answers.answer(owner, q);
     }
 
     @DeleteMapping("/documents/{id}")

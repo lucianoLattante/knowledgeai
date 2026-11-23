@@ -1,15 +1,32 @@
 package io.github.lucianolattante.knowledgeai;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import javax.sql.DataSource;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
@@ -30,7 +47,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest(properties = {
         "knowledgeai.demo.alice-password=alice-integration-fixture",
         "knowledgeai.demo.alex-password=alex-integration-fixture",
-        "knowledgeai.demo.bob-password=bob-integration-fixture"
+        "knowledgeai.demo.bob-password=bob-integration-fixture",
+        "knowledgeai.limits.uploads-per-minute=4",
+        "knowledgeai.limits.retrievals-per-minute=3"
 })
 @ActiveProfiles("demo")
 @AutoConfigureMockMvc
@@ -50,6 +69,98 @@ class KnowledgeAiIT {
     @Autowired MockMvc http;
     @Autowired ObjectMapper json;
     @Autowired JdbcClient jdbc;
+    @Autowired DataSource dataSource;
+    @Autowired TestClock clock;
+
+    @BeforeEach
+    void beginNewBudgetWindow() {
+        clock.advance(Duration.ofMinutes(1));
+    }
+
+    @Test
+    void concurrentSearchesAndAnswersShareOneBudgetPerCaller() throws Exception {
+        var results = new ArrayList<MvcResult>();
+        try (var pool = Executors.newFixedThreadPool(5)) {
+            var requests = new ArrayList<Future<MvcResult>>();
+            for (int i = 0; i < 5; i++) {
+                String path = i % 2 == 0 ? "/api/search" : "/api/answers";
+                requests.add(pool.submit(() -> http.perform(get(path).param("q", "runbook")
+                        .header(HttpHeaders.AUTHORIZATION, basic("alice"))).andReturn()));
+            }
+            for (var request : requests) {
+                results.add(request.get(10, TimeUnit.SECONDS));
+            }
+        }
+        assertThat(results).extracting(KnowledgeAiIT::status)
+                .containsExactlyInAnyOrder(200, 200, 200, 429, 429);
+        for (MvcResult result : results) {
+            if (status(result) == 429) {
+                assertProblem(result, 429, "rate_limited");
+                assertThat(result.getResponse().getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("60");
+            }
+        }
+        assertThat(searchAs("alex", "runbook", 1).isArray()).isTrue();
+        assertThat(searchAs("bob", "runbook", 1).isArray()).isTrue();
+        clock.advance(Duration.ofSeconds(59));
+        var limited = http.perform(get("/api/search").param("q", "runbook")
+                .header(HttpHeaders.AUTHORIZATION, basic("alice"))).andReturn();
+        assertProblem(limited, 429, "rate_limited");
+        assertThat(limited.getResponse().getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("1");
+        clock.advance(Duration.ofSeconds(1));
+        assertThat(searchAs("alice", "runbook", 1).isArray()).isTrue();
+    }
+
+    @Test
+    void rejectedUploadsDoNotConsumeTheRetrievalBudget() throws Exception {
+        var text = "Budget fixture.".getBytes(StandardCharsets.UTF_8);
+        for (int n = 0; n < 4; n++) {
+            assertThat(status(uploadBytes("alice", "Budget", text))).isEqualTo(201);
+        }
+        var before = jdbc.sql("SELECT count(*) FROM document WHERE title = 'Budget'").query(Long.class).single();
+        var limited = uploadBytes("alice", "Budget", text);
+        assertProblem(limited, 429, "rate_limited");
+        assertThat(limited.getResponse().getHeader(HttpHeaders.RETRY_AFTER)).isEqualTo("60");
+        var after = jdbc.sql("SELECT count(*) FROM document WHERE title = 'Budget'").query(Long.class).single();
+        assertThat(after).isEqualTo(before);
+        assertThat(searchAs("alice", "budget", 1).size()).isEqualTo(1);
+    }
+
+    @Test
+    void databaseTimeoutReturnsServiceUnavailableAndSearchRecovers() throws Exception {
+        try (var lock = dataSource.getConnection()) {
+            lock.setAutoCommit(false);
+            try (var statement = lock.createStatement()) {
+                statement.execute("LOCK TABLE document IN ACCESS EXCLUSIVE MODE");
+                var response = http.perform(get("/api/search").param("q", "timeoutprobe")
+                        .header(HttpHeaders.AUTHORIZATION, basic("alice"))).andReturn();
+                assertProblem(response, 503, "database_timeout");
+            } finally {
+                lock.rollback();
+            }
+        }
+        assertThat(searchAs("alice", "timeoutprobe", 1).isArray()).isTrue();
+    }
+
+    @TestConfiguration
+    static class TimingConfiguration {
+        @Bean
+        @Primary
+        TestClock testClock() {
+            return new TestClock();
+        }
+    }
+
+    static final class TestClock extends Clock {
+        private final AtomicReference<Instant> now = new AtomicReference<>(Instant.EPOCH);
+
+        void advance(Duration duration) {
+            now.updateAndGet(value -> value.plus(duration));
+        }
+
+        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(ZoneId zone) { return Clock.fixed(instant(), zone); }
+        @Override public Instant instant() { return now.get(); }
+    }
 
     @Test
     void returnsOnlyOwnedSourcesEvenWhenOtherUsersRankHigher() throws Exception {

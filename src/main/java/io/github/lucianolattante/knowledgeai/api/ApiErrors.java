@@ -1,7 +1,14 @@
 package io.github.lucianolattante.knowledgeai.api;
 
+import java.sql.SQLException;
+
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -12,6 +19,25 @@ import io.github.lucianolattante.knowledgeai.documents.DocumentException;
 
 @RestControllerAdvice
 class ApiErrors {
+    @ExceptionHandler(RequestBudget.LimitExceeded.class)
+    ResponseEntity<ProblemDetail> rateLimited(RequestBudget.LimitExceeded exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfter()))
+                .body(problem(HttpStatus.TOO_MANY_REQUESTS, "rate_limited", "Retry after the current window."));
+    }
+
+    @ExceptionHandler(DataAccessException.class)
+    ProblemDetail databaseError(DataAccessException exception) {
+        if (exception instanceof QueryTimeoutException
+                || exception.getMostSpecificCause() instanceof SQLException sql && "57014".equals(sql.getSQLState())) {
+            return problem(HttpStatus.SERVICE_UNAVAILABLE, "database_timeout", "The database operation timed out.");
+        }
+        if (exception instanceof CannotGetJdbcConnectionException) {
+            return problem(HttpStatus.SERVICE_UNAVAILABLE, "database_unavailable", "The database is unavailable.");
+        }
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "database_error", "Unable to complete the document request.");
+    }
+
     @ExceptionHandler(DocumentException.class)
     ProblemDetail documentError(DocumentException exception) {
         return switch (exception.reason()) {

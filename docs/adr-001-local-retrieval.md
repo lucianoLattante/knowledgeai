@@ -12,6 +12,10 @@ Use a deterministic Spring AI embedding model and exact cosine ranking through p
 
 Apply the same retrieval boundary to answers. Use only authorized excerpts with exact query-term overlap, then select the strongest matching sentence from each excerpt. Quote up to three passages and assign citation numbers from trusted source metadata. Retrieved text is never interpreted as an instruction, and the offline provider cannot perform actions.
 
+Apply separate per-identity upload and retrieval budgets before processing. Search and answers share retrieval capacity. A concurrent update admits only the configured number of requests during a window. Keep the budgets in the demo process, where the authenticated identities are limited to a fixed set. PostgreSQL enforces a statement timeout on each application connection.
+
 ## Consequences
 
 Ranking is reproducible without credentials or external calls. Hashed vocabulary does not model semantic relationships, and exact search cost grows with the authorized corpus. Extractive answers can miss relevant material when wording differs. An approximate vector index or a hosted model would introduce ranking and operational tradeoffs. Shared access, production identity and generated answers are separate future increments.
+
+An in-process limiter adds no database load to rejected requests. It resets on restart and is independent for each process. Multiple replicas would need a shared quota strategy and separate budgets for any external providers.
