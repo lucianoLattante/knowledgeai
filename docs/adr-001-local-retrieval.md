@@ -10,6 +10,8 @@ Store document ownership in PostgreSQL and derive the tenant and owner from the 
 
 Use a deterministic Spring AI embedding model and exact cosine ranking through pgvector. Use a composite relational index to locate the authorized corpus. Return the document ID and chunk ordinal so callers can identify the source.
 
+Apply the same retrieval boundary to answers. Use only authorized excerpts with exact query-term overlap, then select the strongest matching sentence from each excerpt. Quote up to three passages and assign citation numbers from trusted source metadata. Retrieved text is never interpreted as an instruction, and the offline provider cannot perform actions.
+
 ## Consequences
 
-Ranking is reproducible without credentials or external calls. Hashed vocabulary does not model semantic relationships, and exact search cost grows with the authorized corpus. An approximate vector index or a hosted model would introduce ranking and operational tradeoffs. Shared access, production identity and generated answers are separate future increments.
+Ranking is reproducible without credentials or external calls. Hashed vocabulary does not model semantic relationships, and exact search cost grows with the authorized corpus. Extractive answers can miss relevant material when wording differs. An approximate vector index or a hosted model would introduce ranking and operational tradeoffs. Shared access, production identity and generated answers are separate future increments.
