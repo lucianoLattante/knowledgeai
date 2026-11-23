@@ -1,0 +1,5 @@
+knowledgeai:
+  demo:
+    alice-password: ${KNOWLEDGEAI_ALICE_PASSWORD}
+    alex-password: ${KNOWLEDGEAI_ALEX_PASSWORD}
+    bob-password: ${KNOWLEDGEAI_BOB_PASSWORD}

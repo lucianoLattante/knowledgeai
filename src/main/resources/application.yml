@@ -1,0 +1,11 @@
+server:
+  address: 127.0.0.1
+  port: 8082
+  error:
+    include-message: never
+
+spring:
+  datasource:
+    url: ${KNOWLEDGEAI_DB_URL:jdbc:postgresql://127.0.0.1:5440/knowledgeai}
+    username: ${KNOWLEDGEAI_DB_USER:knowledgeai}
+    password: ${KNOWLEDGEAI_DB_PASSWORD}

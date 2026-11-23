@@ -1,0 +1,18 @@
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg17
+    environment:
+      POSTGRES_DB: knowledgeai
+      POSTGRES_USER: knowledgeai
+      POSTGRES_PASSWORD: ${KNOWLEDGEAI_DB_PASSWORD:?set a local database password}
+    ports:
+      - "127.0.0.1:5440:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledgeai -d knowledgeai"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - knowledgeai-data:/var/lib/postgresql/data
+volumes:
+  knowledgeai-data:
