@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.github.lucianolattante.knowledgeai.documents.AnswerService;
+import io.github.lucianolattante.knowledgeai.documents.AnswerService.Answer;
 import io.github.lucianolattante.knowledgeai.documents.DocumentException;
 import io.github.lucianolattante.knowledgeai.documents.DocumentService;
 import io.github.lucianolattante.knowledgeai.documents.DocumentService.Identity;
@@ -35,9 +37,11 @@ import static io.github.lucianolattante.knowledgeai.documents.DocumentException.
 class DocumentController {
     private static final int MAX_DOCUMENT_BYTES = 16_384;
     private final DocumentService documents;
+    private final AnswerService answers;
 
-    DocumentController(DocumentService documents) {
+    DocumentController(DocumentService documents, AnswerService answers) {
         this.documents = documents;
+        this.answers = answers;
     }
 
     @PostMapping(path = "/documents", consumes = MediaType.TEXT_PLAIN_VALUE)
@@ -60,6 +64,11 @@ class DocumentController {
     @GetMapping("/search")
     List<Source> search(Authentication caller, @RequestParam String q, @RequestParam(defaultValue = "5") int limit) {
         return documents.search(identity(caller), q, limit);
+    }
+
+    @GetMapping("/answers")
+    Answer answer(Authentication caller, @RequestParam String q) {
+        return answers.answer(identity(caller), q);
     }
 
     @DeleteMapping("/documents/{id}")

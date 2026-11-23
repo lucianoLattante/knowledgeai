@@ -1,9 +1,6 @@
 package io.github.lucianolattante.knowledgeai.documents;
 
-import java.text.Normalizer;
 import java.util.ArrayList;
-import java.util.Locale;
-import java.util.regex.Pattern;
 
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.Embedding;
@@ -15,7 +12,6 @@ import org.springframework.stereotype.Component;
 @Component
 class LocalEmbeddingModel implements EmbeddingModel {
     static final int DIMENSIONS = 256;
-    private static final Pattern TOKEN = Pattern.compile("[\\p{L}\\p{N}]+");
 
     @Override
     public float[] embed(Document document) {
@@ -37,11 +33,8 @@ class LocalEmbeddingModel implements EmbeddingModel {
     }
 
     private float[] vector(String input) {
-        var tokens = TOKEN.matcher(Normalizer.normalize(input, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT));
         var counts = new float[DIMENSIONS];
-        while (tokens.find()) {
-            counts[Math.floorMod(tokens.group().hashCode(), DIMENSIONS)]++;
-        }
+        TextTerms.terms(input).forEach(term -> counts[Math.floorMod(term.hashCode(), DIMENSIONS)]++);
         return counts;
     }
 }
