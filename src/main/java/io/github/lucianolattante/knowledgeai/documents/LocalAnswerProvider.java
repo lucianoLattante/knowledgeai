@@ -24,6 +24,7 @@ class LocalAnswerProvider {
             }
             start = end;
         }
-        return Optional.ofNullable(best);
+        int requiredOverlap = queryTerms.size() > 1 ? 2 : 1;
+        return topScore >= requiredOverlap ? Optional.of(best) : Optional.empty();
     }
 }

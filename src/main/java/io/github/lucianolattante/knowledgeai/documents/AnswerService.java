@@ -24,7 +24,7 @@ public class AnswerService {
 
     public Answer answer(Identity owner, String question) {
         var candidates = documents.search(owner, question, CANDIDATE_LIMIT);
-        var queryTerms = TextTerms.terms(question).collect(Collectors.toSet());
+        var queryTerms = TextTerms.queryTerms(question).collect(Collectors.toSet());
         var passages = new ArrayList<Passage>();
         var citations = new ArrayList<Citation>();
         for (var source : candidates) {
