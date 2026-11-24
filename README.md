@@ -46,10 +46,16 @@ Alice's search returns a document ID, title, chunk number, excerpt and similarit
 
 [ADR 001](docs/adr-001-local-retrieval.md) explains the authorization boundary, transaction and retrieval tradeoffs.
 
+## Request limits
+
+Each authenticated user has a one-minute window for uploads and a separate window shared by search and answers. Defaults are 10 uploads and 60 retrievals per minute. Set `KNOWLEDGEAI_UPLOADS_PER_MINUTE` and `KNOWLEDGEAI_RETRIEVALS_PER_MINUTE` to positive integers to override them. A request over its limit returns `429 rate_limited` with a `Retry-After` header in seconds. These budgets are local to one running process and reset on restart.
+
+Database connections have a two-second pool wait, and PostgreSQL statements use a two-second timeout. A canceled statement returns `503 database_timeout`. The offline provider makes no billable requests.
+
 ## Tests
 
 Run `mvn -B --no-transfer-progress verify`. The integration suite uses MockMvc with disposable PostgreSQL and pgvector in Testcontainers. It covers owner and tenant isolation before ranking, deletion of chunks, anonymous requests, malformed or oversized input and source attribution when documents contain instruction-like text.
 
 ## Limits
 
-The local model uses hashed word counts, so vocabulary overlap and hash collisions affect candidate ranking. Answers quote existing text with exact term overlap and use server-assigned references. The provider treats document text as data and performs no actions. The API is loopback-only and the demo profile uses HTTP Basic authentication with synthetic accounts. External providers, generative chat, document sharing, rate limiting and production deployment are future work.
+The local model uses hashed word counts, so vocabulary overlap and hash collisions affect candidate ranking. Answers quote existing text with exact term overlap and use server-assigned references. Common question words do not count as evidence. A question with multiple substantive terms must match at least two terms in the same sentence. The provider treats document text as data and performs no actions. The API is loopback-only and the demo profile uses HTTP Basic authentication with synthetic accounts. External providers, generative chat, document sharing, distributed rate limiting and production deployment are future work.
