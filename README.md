@@ -50,6 +50,8 @@ Alice's search returns a document ID, title, chunk number, excerpt and similarit
 
 Each authenticated user has a one-minute window for uploads and a separate window shared by search and answers. Defaults are 10 uploads and 60 retrievals per minute. Set `KNOWLEDGEAI_UPLOADS_PER_MINUTE` and `KNOWLEDGEAI_RETRIEVALS_PER_MINUTE` to positive integers to override them. A request over its limit returns `429 rate_limited` with a `Retry-After` header in seconds. These budgets are local to one running process and reset on restart.
 
+The retained corpus defaults to 100 documents per tenant and owner. Set `KNOWLEDGEAI_DOCUMENTS_PER_OWNER` to a positive integer to adjust it. A valid upload at capacity returns `409 document_limit_reached`. Deleting an owned document frees a slot once committed. Existing records are preserved if the cap is lowered, and the owner can still search and delete them. Use the same setting across application instances sharing the database. The quota uses a PostgreSQL transaction lock and counts committed rows from the existing owner index, so concurrent uploads contend for the same slot across those instances. All uploads must use this code path. The `429` request budget can still reject a request before the storage check.
+
 Database connections have a two-second pool wait, and PostgreSQL statements use a two-second timeout. A canceled statement returns `503 database_timeout`. The offline provider makes no billable requests.
 
 ## Tests
