@@ -42,6 +42,8 @@ class ApiErrors {
     ProblemDetail documentError(DocumentException exception) {
         return switch (exception.reason()) {
             case DOCUMENT_NOT_FOUND -> problem(HttpStatus.NOT_FOUND, "document_not_found", "Document unavailable.");
+            case DOCUMENT_LIMIT_REACHED -> problem(HttpStatus.CONFLICT, "document_limit_reached",
+                    "Delete an owned document before uploading another.");
             case EMPTY_TEXT -> problem(HttpStatus.BAD_REQUEST, "empty_text", "Supply text with indexable words.");
             case INVALID_UTF8 -> problem(HttpStatus.BAD_REQUEST, "invalid_utf8", "Supply UTF-8 text without NUL bytes.");
             case INVALID_TITLE -> problem(HttpStatus.BAD_REQUEST, "invalid_title", "Supply a nonempty title up to 120 characters.");

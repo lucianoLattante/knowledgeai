@@ -6,7 +6,9 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import static io.github.lucianolattante.knowledgeai.documents.DocumentException.Reason.*;
@@ -16,13 +18,19 @@ public class DocumentService {
     private static final int CHUNK_CODE_POINTS = 700;
     private final EmbeddingModel embeddings;
     private final DocumentStore store;
+    private final int maxDocuments;
 
-    DocumentService(EmbeddingModel embeddings, DocumentStore store) {
+    DocumentService(EmbeddingModel embeddings, DocumentStore store,
+                    @Value("${knowledgeai.limits.documents-per-owner}") int maxDocuments) {
+        if (maxDocuments < 1) {
+            throw new IllegalArgumentException("Document limit must be positive");
+        }
         this.embeddings = embeddings;
         this.store = store;
+        this.maxDocuments = maxDocuments;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public IndexedDocument ingest(Identity identity, String title, String text) {
         String trimmedTitle = title.strip();
         if (trimmedTitle.isEmpty() || trimmedTitle.length() > 120 || trimmedTitle.indexOf(0) >= 0) {
@@ -42,6 +50,10 @@ public class DocumentService {
             throw new DocumentException(EMPTY_TEXT);
         }
 
+        store.lockUploads(identity);
+        if (store.atDocumentLimit(identity, maxDocuments)) {
+            throw new DocumentException(DOCUMENT_LIMIT_REACHED);
+        }
         UUID id = UUID.randomUUID();
         store.insertDocument(identity, id, trimmedTitle);
         store.insertChunks(id, chunks);

@@ -17,3 +17,4 @@ knowledgeai:
   limits:
     uploads-per-minute: ${KNOWLEDGEAI_UPLOADS_PER_MINUTE:10}
     retrievals-per-minute: ${KNOWLEDGEAI_RETRIEVALS_PER_MINUTE:60}
+    documents-per-owner: ${KNOWLEDGEAI_DOCUMENTS_PER_OWNER:100}

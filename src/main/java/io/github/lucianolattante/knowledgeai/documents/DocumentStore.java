@@ -18,6 +18,23 @@ class DocumentStore {
         this.jdbc = jdbc;
     }
 
+    void lockUploads(Identity owner) {
+        jdbc.sql("SELECT 1 FROM pg_advisory_xact_lock(hashtext(:tenant), hashtext(:owner))")
+                .param("tenant", owner.tenant()).param("owner", owner.username())
+                .query(Integer.class).single();
+    }
+
+    boolean atDocumentLimit(Identity owner, int limit) {
+        return jdbc.sql("""
+                SELECT EXISTS (
+                    SELECT 1 FROM document WHERE tenant = :tenant AND owner_name = :owner
+                    OFFSET :skip
+                )
+                """)
+                .param("tenant", owner.tenant()).param("owner", owner.username())
+                .param("skip", limit - 1).query(Boolean.class).single();
+    }
+
     void insertDocument(Identity owner, UUID id, String title) {
         jdbc.sql("INSERT INTO document (id, tenant, owner_name, title) VALUES (:id, :tenant, :owner, :title)")
                 .param("id", id).param("tenant", owner.tenant()).param("owner", owner.username())

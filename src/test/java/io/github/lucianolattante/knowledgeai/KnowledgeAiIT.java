@@ -9,6 +9,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -49,7 +50,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "knowledgeai.demo.alex-password=alex-integration-fixture",
         "knowledgeai.demo.bob-password=bob-integration-fixture",
         "knowledgeai.limits.uploads-per-minute=4",
-        "knowledgeai.limits.retrievals-per-minute=3"
+        "knowledgeai.limits.retrievals-per-minute=3",
+        "knowledgeai.limits.documents-per-owner=4"
 })
 @ActiveProfiles("demo")
 @AutoConfigureMockMvc
@@ -73,7 +75,8 @@ class KnowledgeAiIT {
     @Autowired TestClock clock;
 
     @BeforeEach
-    void beginNewBudgetWindow() {
+    void resetFixtures() {
+        jdbc.sql("DELETE FROM document").update();
         clock.advance(Duration.ofMinutes(1));
     }
 
@@ -123,6 +126,43 @@ class KnowledgeAiIT {
         var after = jdbc.sql("SELECT count(*) FROM document WHERE title = 'Budget'").query(Long.class).single();
         assertThat(after).isEqualTo(before);
         assertThat(searchAs("alice", "budget", 1).size()).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentUploadsRespectTheOwnerCorpusLimitAndDeletionReopensCapacity() throws Exception {
+        UUID removable = upload("alice", "Removable", "Original corpus fixture.");
+        upload("alice", "Retained 1", "First retained document.");
+        upload("alice", "Retained 2", "Second retained document.");
+        clock.advance(Duration.ofMinutes(1));
+
+        var ready = new CyclicBarrier(2);
+        byte[] fixture = "Corpus capacity fixture.".getBytes(StandardCharsets.UTF_8);
+        var results = new ArrayList<MvcResult>();
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var uploads = new ArrayList<Future<MvcResult>>();
+            for (int i = 0; i < 2; i++) {
+                String title = "Concurrent " + i;
+                uploads.add(pool.submit(() -> {
+                    ready.await(5, TimeUnit.SECONDS);
+                    return uploadBytes("alice", title, fixture);
+                }));
+            }
+            for (var request : uploads) {
+                results.add(request.get(10, TimeUnit.SECONDS));
+            }
+        }
+        assertThat(results).extracting(KnowledgeAiIT::status).containsExactlyInAnyOrder(201, 409);
+        assertProblem(results.stream().filter(r -> status(r) == 409).findFirst().orElseThrow(),
+                409, "document_limit_reached");
+        assertThat(jdbc.sql("SELECT count(*) FROM document WHERE tenant = 'TENANT_ALPHA' AND owner_name = 'alice'")
+                .query(Long.class).single()).isEqualTo(4);
+        assertThat(status(uploadBytes("alex", "Same tenant, other owner", fixture))).isEqualTo(201);
+        assertThat(status(uploadBytes("bob", "Other tenant", fixture))).isEqualTo(201);
+
+        var removed = http.perform(delete("/api/documents/{id}", removable)
+                .header(HttpHeaders.AUTHORIZATION, basic("alice"))).andReturn();
+        assertThat(status(removed)).isEqualTo(204);
+        assertThat(status(uploadBytes("alice", "Replacement", fixture))).isEqualTo(201);
     }
 
     @Test
