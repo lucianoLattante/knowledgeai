@@ -154,7 +154,7 @@ class KnowledgeAiIT {
         assertThat(results).extracting(KnowledgeAiIT::status).containsExactlyInAnyOrder(201, 409);
         assertProblem(results.stream().filter(r -> status(r) == 409).findFirst().orElseThrow(),
                 409, "document_limit_reached");
-        assertThat(jdbc.sql("SELECT count(*) FROM document WHERE tenant = 'TENANT_ALPHA' AND owner_name = 'alice'")
+        assertThat(jdbc.sql("SELECT count(*) FROM document WHERE tenant = 'alpha' AND owner_name = 'alice'")
                 .query(Long.class).single()).isEqualTo(4);
         assertThat(status(uploadBytes("alex", "Same tenant, other owner", fixture))).isEqualTo(201);
         assertThat(status(uploadBytes("bob", "Other tenant", fixture))).isEqualTo(201);
